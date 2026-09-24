@@ -1,0 +1,168 @@
+//
+//  ServerAddViewModel.swift
+//  qBitControl
+//
+
+import SwiftUI
+
+class ServerAddViewModel: ObservableObject {
+    @ObservedObject var serversHelper = ServersHelper.shared
+    
+    var editServerId: String?
+    
+    @Published var friendlyName = ""
+    @Published var url = ""
+    @Published var username = ""
+    @Published var password = ""
+    @Published var basicAuth: Server.BasicAuth?
+    @Published var customHeaders: [Server.CustomHeader] = []
+    @Published var allowSelfSignedCert = false
+    
+    @Published var isInvalidAlert = false
+    @Published var invalidAlertMessage = ""
+    
+    @Published var connectionErrorMessage = ""
+    
+    @Published var isConnectionAlert = false
+    @Published var isSSLCertAlert = false
+    
+    @Published var isCheckingConnection = false
+    
+    private var alertQueue: [String] = []
+    private var pendingServer: Server?
+    
+    init() { }
+    init(editServerId: String) {
+        self.editServerId = editServerId
+        
+        if let server = serversHelper.getServer(id: editServerId) {
+            friendlyName = server.name
+            url = server.url
+            username = server.username
+            password = server.password
+            basicAuth = server.basicAuth
+            customHeaders = server.customHeaders
+            allowSelfSignedCert = server.allowSelfSignedCert
+        }
+    }
+    
+    func validateInputs() -> Bool {
+        if !(url.contains("https://") || url.contains("http://")) {
+            showAlert(message: "Include protocol in the URL — 'https://' or 'http://' depending on your setup.")
+            return false
+        }
+        return true
+    }
+    
+    func showAlert(message: String?) {
+        if let message = message {
+            alertQueue.append(message)
+        }
+        
+        guard !isInvalidAlert, let message = alertQueue.first else {
+            return
+        }
+        
+        alertQueue.removeFirst()
+        invalidAlertMessage = message
+        isInvalidAlert = true
+    }
+    
+    func alertDismissed() {
+        DispatchQueue.main.async {
+            self.showAlert(message: nil)
+        }
+    }
+    
+    func addServer(server: Server) {
+        serversHelper.addServer(server: server)
+    }
+    
+    func makeServer() -> Server {
+        sanitizeInputs()
+        return Server(id: editServerId ?? UUID().uuidString, name: friendlyName, url: url, username: username, password: password, basicAuth: basicAuth, customHeaders: customHeaders, allowSelfSignedCert: allowSelfSignedCert)
+    }
+
+    func addServer(dismiss: DismissAction) {
+        if !validateInputs() { return }
+        if isCheckingConnection { return }
+        
+        let server = makeServer()
+        pendingServer = server
+        
+        self.isCheckingConnection = true
+        
+        serversHelper.checkConnection(server: server, result: { didConnect, error in
+            DispatchQueue.main.async {
+                self.isCheckingConnection = false
+                if didConnect {
+                    self.commitServer(dismiss: dismiss)
+                } else if let networkError = error as? NetworkError, networkError == .sslUntrusted {
+                    self.isSSLCertAlert = true
+                } else {
+                    self.connectionErrorMessage = self.buildConnectionErrorMessage(from: error)
+                    self.isConnectionAlert = true
+                }
+            }
+        })
+    }
+    
+    func saveAnyway(dismiss: DismissAction) {
+        commitServer(dismiss: dismiss)
+    }
+
+    func retryWithSSLTrust(dismiss: DismissAction) {
+        guard var server = pendingServer else { return }
+        server.allowSelfSignedCert = true
+        pendingServer = server
+
+        isCheckingConnection = true
+        serversHelper.checkConnection(server: server) { didConnect, error in
+            DispatchQueue.main.async {
+                self.isCheckingConnection = false
+                if didConnect {
+                    self.commitServer(dismiss: dismiss)
+                } else {
+                    self.connectionErrorMessage = self.buildConnectionErrorMessage(from: error)
+                    self.isConnectionAlert = true
+                }
+            }
+        }
+    }
+    
+    private func commitServer(dismiss: DismissAction) {
+        guard let server = pendingServer else { return }
+        if editServerId != nil {
+            serversHelper.updateServer(server)
+        } else {
+            serversHelper.addServer(server: server)
+        }
+        pendingServer = nil
+        dismiss()
+    }
+    
+    func sanitizeInputs() {
+        url = url.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
+    }
+    
+    func buildConnectionErrorMessage(from error: Error?) -> String {
+        var message = error?.localizedDescription ?? "Could not connect to the server."
+        if isLanHost, let urlError = error as? URLError {
+            let codes: [URLError.Code] = [.cannotConnectToHost, .networkConnectionLost, .timedOut, .cannotFindHost, .dnsLookupFailed]
+            if codes.contains(urlError.code) {
+                message += "\n\nIf this is a local server, check that local network access is enabled:\nSettings > Privacy & Security > Local Network > qBitControl"
+            }
+        }
+        return message
+    }
+    
+    var isLanHost: Bool {
+        guard let host = URL(string: url)?.host else { return false }
+        if host == "localhost" || host.hasSuffix(".local") { return true }
+        let parts = host.split(separator: ".")
+        guard parts.count == 4, let first = Int(parts[0]) else { return false }
+        return first == 10
+            || (first == 192 && parts[1] == "168")
+            || (first == 172 && (Int(parts[1]) ?? 0) >= 16 && (Int(parts[1]) ?? 0) <= 31)
+    }
+}

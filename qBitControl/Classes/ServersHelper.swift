@@ -1,16 +1,50 @@
 //
+//  ServersHelper.swift
+//  qBitControl
+//
 
 import Foundation
+import SwiftUI
 
-
-class ServersHelper {
-    private var defaults = UserDefaults.standard
-    private var servers: [Server] = []
+@MainActor
+class ServersHelper: ObservableObject {
+    static public var shared = ServersHelper()
     
+    let defaults: UserDefaults
     private let serversKey = "servers"
     private let activeServerKey = "activeServer"
+    private let recentServersKey = "recentServers"
+
+    @Published public var servers: [Server] = []
+    @Published public var recentServers: [Server] = []
+    @Published public var activeServerId: String?
+    @Published public var connectingServerId: String?
     
-    func refreshServerList() {
+    @Published public var isLoggedIn = false
+    @Published public var client: TorrentClientProtocol?
+    
+    @Published public var preferences: qBitPreferences?
+    @Published public var categories: [String: Category] = [:]
+    @Published public var tags: [String] = []
+    
+    // For unit testing tracking
+    public var reauthAttemptCount = 0
+    public var refreshClientCallCount = 0
+    
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        getServerList()
+        getActiveServer()
+        loadRecentServers()
+
+        if let activeServerId = self.activeServerId {
+            if let activeServer = self.getServer(id: activeServerId) {
+                self.connect(server: activeServer)
+            }
+        }
+    }
+    
+    func getServerList() {
         let encodedServers = defaults.data(forKey: self.serversKey)
         
         if let encodedServers = encodedServers {
@@ -19,8 +53,31 @@ class ServersHelper {
             do {
                 self.servers = try decoder.decode([Server].self, from: encodedServers)
             } catch {
-                print("Servers could not be decoded.")
+                AppLogger.log(.error, GeneralErrorPayload(category: .system, eventName: "servers_decode_failed", errorDescription: "Servers could not be decoded: \(error.localizedDescription)"))
             }
+        }
+    }
+    
+    func getServer(id: String) -> Server? {
+        return servers.first(where: {
+            server in
+            return server.id == id
+        })
+    }
+    
+    private func setActiveServer(id: String) {
+        self.activeServerId = id
+        defaults.setValue("\(id)", forKey: activeServerKey)
+    }
+    
+    private func getActiveServer() {
+        let serverId = defaults.string(forKey: activeServerKey)
+        
+        if let serverId = serverId {
+            self.activeServerId = self.servers.first(where: {
+                server in
+                server.id == serverId
+            })?.id
         }
     }
     
@@ -31,77 +88,263 @@ class ServersHelper {
             let encodedServers = try encoder.encode(self.servers)
             defaults.setValue(encodedServers, forKey: self.serversKey)
         } catch {
-            print("Servers could not be encoded")
+            AppLogger.log(.error, GeneralErrorPayload(category: .system, eventName: "servers_encode_failed", errorDescription: "Servers could not be encoded: \(error.localizedDescription)"))
         }
     }
     
-    func getServers() -> [Server] {
-        refreshServerList()
-        return servers
-    }
-    
     func addServer(server: Server) {
-        refreshServerList()
-        
         self.servers.append(server)
-        
         saveSeverList()
+    }
+
+    func updateServer(_ server: Server) {
+        var updated = servers
+        if let index = updated.firstIndex(where: { $0.id == server.id }) {
+            updated[index] = server
+            servers = updated
+            saveSeverList()
+            loadRecentServers()
+        }
     }
     
     func removeServer(id: String) {
-        refreshServerList()
-        
         self.servers.removeAll(where: {
             server in
             return server.id == id
         })
-        
+
+        removeFromRecent(id: id)
+
+        if(id == activeServerId) {
+            activeServerId = nil
+            isLoggedIn = false
+            client = nil
+            clearCache()
+        }
+
         saveSeverList()
     }
     
-    func checkConnection(server: Server, result: @escaping (Bool) -> Void) {
+    func checkConnection(server: Server, result: @escaping (Bool, Error?) -> Void) {
         Task {
-            await Auth.getCookie(url: server.url, username: server.username, password: server.password, isSuccess: {
-                success in
-                result(success);
-            }, setCookie: false)
-        }
-    }
-    
-    func connect(server: Server, isSuccess: @escaping (Bool) -> Void) {
-        Task {
-            await Auth.getCookie(url: server.url, username: server.username, password: server.password, isSuccess: {
-                success in
-                if(success) {
-                    self.setActiveServer(id: server.id)
-                }
-                isSuccess(success)
-            })
-        }
-    }
-    
-    func setActiveServer(id: String) {
-        if let activeServer = getActiveServer() {
-            if(id != activeServer.id) {
-                ServerEvents.callOnChangeActions()
+            let networkClient = NetworkClient(baseURL: server.url, basicAuth: server.basicAuth, customHeaders: server.customHeaders, allowSelfSignedCert: server.allowSelfSignedCert)
+            let tempClient = qBittorrentClient(networkClient: networkClient)
+            do {
+                try await tempClient.login(username: server.username, password: server.password)
+                result(true, nil)
+            } catch {
+                result(false, error)
             }
         }
-        
-        defaults.setValue("\(id)", forKey: activeServerKey)
     }
     
-    func getActiveServer() -> Server? {
-        let serverId = defaults.string(forKey: activeServerKey)
+    func clearCache() {
+        qBitData.shared.cacheManager.torrents = [:]
+        qBitData.shared.rid = 0
+        qBitData.shared.resetTransferHistory()
         
-        if let serverId = serverId {
-            refreshServerList()
+        RSSNodeViewModel.shared.rssRootNode = RSSNode()
+        
+        self.preferences = nil
+        self.categories = [:]
+        self.tags = []
+    }
+    
+    func connect(server: Server, result: ((Bool) -> Void)?) {
+        qBitData.shared.stopPolling()
+        
+        if server.id != activeServerId {
+            self.clearCache()
+        }
+        connectingServerId = server.id
+        
+        Task {
+            defer {
+                self.connectingServerId = nil
+                qBitData.shared.startPolling()
+            }
             
-            return self.servers.first(where: {
-                server in
-                server.id == serverId
-            })
+            let networkClient = NetworkClient(baseURL: server.url, basicAuth: server.basicAuth, customHeaders: server.customHeaders, allowSelfSignedCert: server.allowSelfSignedCert)
+            let newClient = qBittorrentClient(networkClient: networkClient)
+            do {
+                try await newClient.login(username: server.username, password: server.password)
+                
+                self.client = newClient
+                self.setActiveServer(id: server.id)
+                
+                await fetchMetadata()
+                
+                self.isLoggedIn = true
+                await qBitData.shared.getMainData()
+                appendToRecent(serverId: server.id)
+                result?(true)
+            } catch {
+                result?(false)
+            }
+        }
+    }
+    
+    func connect(server: Server) {
+        qBitData.shared.stopPolling()
+        
+        if server.id != activeServerId {
+            self.clearCache()
+        }
+        connectingServerId = server.id
+        
+        Task {
+            defer {
+                self.connectingServerId = nil
+                qBitData.shared.startPolling()
+            }
+            
+            let networkClient = NetworkClient(baseURL: server.url, basicAuth: server.basicAuth, customHeaders: server.customHeaders, allowSelfSignedCert: server.allowSelfSignedCert)
+            let newClient = qBittorrentClient(networkClient: networkClient)
+            do {
+                let loggedInClient = try await withThrowingTaskGroup(of: qBittorrentClient.self) { group in
+                    group.addTask {
+                        try await newClient.login(username: server.username, password: server.password)
+                        return newClient
+                    }
+                    
+                    group.addTask {
+                        try await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+                        throw NetworkError.timeout
+                    }
+                    
+                    let firstResult = try await group.next()
+                    group.cancelAll()
+                    
+                    guard let client = firstResult else {
+                        throw NetworkError.invalidResponse
+                    }
+                    return client
+                }
+                
+                self.client = loggedInClient
+                self.setActiveServer(id: server.id)
+                await self.fetchMetadata()
+                
+                self.isLoggedIn = true
+                await qBitData.shared.getMainData()
+                appendToRecent(serverId: server.id)
+            } catch {
+                AppLogger.log(.error, GeneralErrorPayload(category: .auth, eventName: "auto_connect_failed", errorDescription: error.localizedDescription))
+            }
+        }
+    }
+    
+    func refreshClient() async {
+        refreshClientCallCount += 1
+        guard let activeId = activeServerId, let server = getServer(id: activeId) else { return }
+
+        let networkClient = NetworkClient(baseURL: server.url, basicAuth: server.basicAuth, customHeaders: server.customHeaders, allowSelfSignedCert: server.allowSelfSignedCert)
+        let newClient = qBittorrentClient(networkClient: networkClient)
+
+        do {
+            try await newClient.login(username: server.username, password: server.password)
+            self.client = newClient
+            self.isLoggedIn = true
+            AppLogger.log(.info, SystemEventPayload(category: .system, eventName: "client_refresh_success", message: "Successfully refreshed client for server: \(server.name)"))
+        } catch {
+            AppLogger.log(.error, GeneralErrorPayload(category: .system, eventName: "client_refresh_failed", errorDescription: error.localizedDescription))
+        }
+    }
+
+    func reauthenticate() async throws {
+        reauthAttemptCount += 1
+        guard let activeId = activeServerId, let server = getServer(id: activeId) else {
+            throw NetworkError.unauthorized
         }
         
-        return nil
+        let networkClient = NetworkClient(baseURL: server.url, basicAuth: server.basicAuth, customHeaders: server.customHeaders, allowSelfSignedCert: server.allowSelfSignedCert)
+        let newClient = qBittorrentClient(networkClient: networkClient)
+        
+        do {
+            try await newClient.login(username: server.username, password: server.password)
+            self.client = newClient
+            self.isLoggedIn = true
+            AppLogger.log(.info, SystemEventPayload(category: .auth, eventName: "silent_reauth_success", message: "Successfully silently reauthenticated server: \(server.name)"))
+        } catch {
+            AppLogger.log(.error, GeneralErrorPayload(category: .auth, eventName: "silent_reauth_failed", errorDescription: error.localizedDescription))
+            
+            if let networkError = error as? NetworkError, networkError == .unauthorized {
+                // Permanent auth failure (e.g. password changed) -> Log out and show login screen
+                self.isLoggedIn = false
+                self.client = nil
+                self.clearCache()
+            }
+            throw error
+        }
+    }
+    
+    func fetchMetadata() async {
+        guard let client = client else { return }
+        do {
+            self.preferences = try await client.getPreferences()
+        } catch {
+            AppLogger.log(.error, GeneralErrorPayload(category: .system, eventName: "fetch_preferences_failed", errorDescription: error.localizedDescription))
+        }
+        do {
+            self.categories = try await client.getCategories()
+        } catch {
+            AppLogger.log(.error, GeneralErrorPayload(category: .torrents, eventName: "fetch_categories_failed", errorDescription: error.localizedDescription))
+        }
+        do {
+            self.tags = try await client.getTags()
+        } catch {
+            AppLogger.log(.error, GeneralErrorPayload(category: .torrents, eventName: "fetch_tags_failed", errorDescription: error.localizedDescription))
+        }
+    }
+    
+    func refreshCategories() {
+        Task {
+            do {
+                if let client = client {
+                    self.categories = try await client.getCategories()
+                }
+            } catch {
+                AppLogger.log(.error, GeneralErrorPayload(category: .torrents, eventName: "refresh_categories_failed", errorDescription: error.localizedDescription))
+            }
+        }
+    }
+    
+    func refreshTags() {
+        Task {
+            do {
+                if let client = client {
+                    self.tags = try await client.getTags()
+                }
+            } catch {
+                AppLogger.log(.error, GeneralErrorPayload(category: .torrents, eventName: "refresh_tags_failed", errorDescription: error.localizedDescription))
+            }
+        }
+    }
+
+    func loadRecentServers() {
+        let ids = defaults.stringArray(forKey: recentServersKey) ?? []
+        withAnimation {
+            recentServers = ids.compactMap { id in
+                servers.first { $0.id == id }
+            }
+        }
+    }
+
+    func appendToRecent(serverId: String) {
+        var ids = defaults.stringArray(forKey: recentServersKey) ?? []
+        ids.removeAll { $0 == serverId }
+        ids.insert(serverId, at: 0)
+        if ids.count > 3 {
+            ids = Array(ids.prefix(3))
+        }
+        defaults.set(ids, forKey: recentServersKey)
+        loadRecentServers()
+    }
+
+    func removeFromRecent(id: String) {
+        var ids = defaults.stringArray(forKey: recentServersKey) ?? []
+        ids.removeAll { $0 == id }
+        defaults.set(ids, forKey: recentServersKey)
+        loadRecentServers()
     }
 }

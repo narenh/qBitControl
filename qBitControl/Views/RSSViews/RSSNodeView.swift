@@ -1,0 +1,179 @@
+import SwiftUI
+
+struct RSSNodeView: View {
+    @State public var path: [String]
+    @ObservedObject var viewModel = RSSNodeViewModel.shared
+    var rssNode: RSSNode { viewModel.rssRootNode.getNode(path: path) ?? RSSNode() }
+    
+    @State private var isAddFeedAlert: Bool = false
+    @State private var isAddFolderAlert: Bool = false
+    @State private var isRenameAlert: Bool = false
+    
+    @State private var newFeedURL = ""
+    @State private var newFolderName = ""
+    @State private var newRenameName = ""
+    @State private var oldRenamePath = ""
+    
+    var isRootView: Bool {
+        self.path.count == 1
+    }
+    
+    func getItemPath(item: String) -> String {
+        var path = self.path + [item]
+        path.removeFirst()
+        return path.joined(separator: "\\")
+    }
+    
+    var body: some View {
+        List {
+            if isRootView {
+                Section(header: Text("Search")) {
+                    NavigationLink {
+                        SearchView()
+                    } label: {
+                        Label("Search", systemImage: "magnifyingglass")
+                    }
+                }
+                
+                if let preferences = ServersHelper.shared.preferences,
+                   preferences.rss_processing_enabled == false,
+                   !viewModel.isRSSEnabling {
+                    Section {
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                                .foregroundColor(.orange)
+                            Text("RSS fetching is disabled")
+                                .font(.subheadline)
+                            Spacer()
+                            Button("Enable") {
+                                viewModel.enableRSSProcessing()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            }
+            
+            Section(header: sectionHeader()) {
+                ForEach(rssNode.nodes, id: \.id) { node in
+                    NavigationLink {
+                        RSSNodeView(path: path + [node.title])
+                    } label: {
+                        Label(node.title, systemImage: "folder.fill").contextMenu(menuItems: { itemContextMenu(itemTitle: node.title, isFolder: true) })
+                    }
+                }
+                
+                ForEach(rssNode.feeds, id: \.id) { feed in
+                    NavigationLink {
+                        RSSFeedView(feedURL: feed.url ?? "")
+                    } label: {
+                        Label(feed.title.isEmpty ? "Feed" : feed.title, systemImage: "dot.radiowaves.up.forward").contextMenu(menuItems: { itemContextMenu(itemTitle: feed.title) })
+                    }
+                }
+            }
+        }.navigationTitle(viewModel.rssRootNode.getNode(path: path)?.title ?? "")
+            .refreshable { refresh() }
+            .toolbar { toolbar() }
+            .alert("Add Feed", isPresented: $isAddFeedAlert, actions: { addFeedAlert() })
+            .alert("Add Folder", isPresented: $isAddFolderAlert, actions: { addFolderAlert() })
+            .alert("New Name", isPresented: $isRenameAlert, actions: { renameAlert() })
+            .onAppear {
+                viewModel.startTimer()
+            }
+            .onDisappear {
+                viewModel.stopTimer()
+            }
+            .alert(item: $viewModel.activeError) { error in
+                Alert(
+                    title: Text("RSS Action Failed"),
+                    message: Text(error.localizedDescription),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+    }
+    
+    func sectionHeader() -> Text {
+        var header: [String] = []
+        if(!rssNode.nodes.isEmpty) { header.append("\(rssNode.nodes.count)" + " " + String(localized: "Folders")) }
+        if(!rssNode.feeds.isEmpty) { header.append("\(rssNode.feeds.count)" + " " + String(localized: "Feeds")) }
+        
+        return Text(header.joined(separator: " • "))
+    }
+    
+    func toolbar() -> some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Menu {
+                Button { isAddFeedAlert = true } label: { Label("Add Feed", systemImage: "dot.radiowaves.up.forward") }
+                Button { isAddFolderAlert = true } label: { Label("Add Folder", systemImage: "folder.badge.plus") }
+            } label: {
+                Image(systemName: "plus")
+            }
+        }
+    }
+    
+    func addFeedAlert() -> some View {
+        VStack {
+            TextField("URL", text: $newFeedURL)
+            Button("Add") {
+                if self.newFeedURL.isEmpty { return }
+                var path = self.path + [newFeedURL]
+                path.removeFirst()
+                viewModel.addRSSFeed(url: newFeedURL, path: path.joined(separator: "\\"))
+                newFeedURL = ""
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+    
+    func addFolderAlert() -> some View {
+        VStack {
+            TextField("Name", text: $newFolderName)
+            Button("Add") {
+                let path = rssNode.getPath()
+                if path.isEmpty {
+                    viewModel.addRSSFolder(path: newFolderName)
+                } else {
+                    viewModel.addRSSFolder(path: rssNode.getPath() + "\\" + newFolderName)
+                }
+                newFolderName = ""
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+    
+    func renameAlert() -> some View {
+        VStack {
+            TextField("Name", text: $newRenameName)
+            Button("Save") {
+                let newRenamePath = self.getItemPath(item: newRenameName)
+                viewModel.moveRSSItem(itemPath: oldRenamePath, destPath: newRenamePath)
+                
+                oldRenamePath = ""
+                newRenameName = ""
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+    
+    func itemContextMenu(itemTitle: String, isFolder: Bool = false) -> some View {
+        VStack {
+            if !isFolder {
+                Button {
+                    viewModel.addRSSRefreshItem(path: self.getItemPath(item: itemTitle))
+                } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+            }
+            Button {
+                self.newRenameName = itemTitle
+                self.oldRenamePath = self.getItemPath(item: itemTitle)
+                self.isRenameAlert.toggle()
+            } label: { Label("Rename", systemImage: "pencil") }
+            Button(role: .destructive) {
+                viewModel.addRSSRemoveItem(path: self.getItemPath(item: itemTitle))
+            } label: { Label("Remove", systemImage: "trash") }
+        }
+    }
+    
+    func refresh() { viewModel.getRssRootNode() }
+}
+
