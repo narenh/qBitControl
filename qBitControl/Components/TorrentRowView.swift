@@ -100,7 +100,7 @@ struct TorrentRowView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .bottom) {
                 Text(name.charWrappable)
-                    .font(.subheadline.monospaced())
+                    .font(.subheadline)
                     .lineLimit(nil)
                 Spacer()
             }.padding(.bottom, -1)
