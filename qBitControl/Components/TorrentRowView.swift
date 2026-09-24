@@ -5,6 +5,13 @@
 
 import SwiftUI
 
+extension String {
+    var charWrappable: String {
+        map { String($0) }.joined(separator: "\u{200B}")
+    }
+}
+
+
 struct TorrentRowView: View {
     let name: String
     let progress: Float
@@ -92,8 +99,9 @@ struct TorrentRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .bottom) {
-                Text(name)
-                    .lineLimit(1)
+                Text(name.charWrappable)
+                    .font(.subheadline.monospaced())
+                    .lineLimit(nil)
                 Spacer()
             }.padding(.bottom, -1)
             
