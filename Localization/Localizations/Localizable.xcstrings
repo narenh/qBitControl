@@ -1039,6 +1039,12 @@
     },
     "Add Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1496,6 +1502,12 @@
     },
     "Are you sure you want to pause all tasks?" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Are you sure you want to pause all torrents?"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1536,6 +1548,12 @@
     },
     "Are you sure you want to resume all tasks?" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Are you sure you want to resume all torrents?"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1576,6 +1594,12 @@
     },
     "Are you sure you want to resume current tasks?" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Are you sure you want to resume current torrents?"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2833,6 +2857,12 @@
     },
     "Delete Completed Tasks" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Completed Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2873,6 +2903,12 @@
     },
     "Delete Completed Tasks with Files" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Completed Torrents with Files"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2913,6 +2949,12 @@
     },
     "Delete Selected Tasks" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Selected Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2953,6 +2995,12 @@
     },
     "Delete Selected Tasks with Files" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Selected Torrents with Files"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2993,6 +3041,12 @@
     },
     "Delete Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3033,6 +3087,12 @@
     },
     "Delete Task with Files" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Torrent with Files"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6363,6 +6423,12 @@
     },
     "Pause All Tasks" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause All Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -6403,6 +6469,12 @@
     },
     "Pause Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7077,6 +7149,12 @@
     },
     "Reannounce Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reannounce Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7157,6 +7235,12 @@
     },
     "Recheck Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recheck Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7594,6 +7678,12 @@
     },
     "Resume All Tasks" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resume All Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7634,6 +7724,12 @@
     },
     "Resume Current Tasks" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resume Current Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -7662,6 +7758,12 @@
     },
     "Resume Task" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resume Torrent"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9391,6 +9493,12 @@
     },
     "Task Type" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Torrent Type"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
@@ -9432,6 +9540,12 @@
     "Tasks" : {
       "comment" : "Tasks",
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Torrents"
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
