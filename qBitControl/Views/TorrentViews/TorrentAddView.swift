@@ -139,7 +139,20 @@ struct TorrentAddView: View {
                     }
                 }
             }
-            
+
+            Section {
+                Button { viewModel.addTorrent(then: dismiss) } label: {
+                    Text("Add")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isAdding || viewModel.isFileLoading)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
+
             Section(header: Text("Management")) {
                 if viewModel.showAdvancedOptions { Toggle(isOn: $viewModel.skipChecking) { Text("Skip Checking") } }
                 Toggle(isOn: $viewModel.paused) { Text("Pause") }
